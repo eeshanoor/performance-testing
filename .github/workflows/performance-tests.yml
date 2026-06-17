@@ -1,0 +1,52 @@
+name: Performance Tests
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 1'   # Every Monday at 2am
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Test type to run'
+        required: true
+        default: 'smoke'
+        type: choice
+        options: [smoke, load, stress, spike]
+
+jobs:
+  performance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Run Smoke Test
+        if: github.event.inputs.test_type == 'smoke' || github.event_name != 'workflow_dispatch'
+        run: k6 run --out json=results/smoke-results.json tests/smoke-test.js
+
+      - name: Run Load Test
+        if: github.event.inputs.test_type == 'load'
+        run: k6 run --out json=results/load-results.json tests/load-test.js
+
+      - name: Run Stress Test
+        if: github.event.inputs.test_type == 'stress'
+        run: k6 run --out json=results/stress-results.json tests/stress-test.js
+
+      - name: Run Spike Test
+        if: github.event.inputs.test_type == 'spike'
+        run: k6 run --out json=results/spike-results.json tests/spike-test.js
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-results-${{ github.event.inputs.test_type || 'smoke' }}
+          path: results/
